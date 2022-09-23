@@ -1,18 +1,11 @@
 from OpenGL.GL import *
 from OpenGL.GL import shaders
-import OpenGL
+# import OpenGL
 from OpenGL.GLUT import *
 from OpenGL.GLU import *
 import serial
 import time
-import numpy
-import glm
-def IdentityMat44(): return numpy.matrix(numpy.identity(4), copy=False, dtype='float32')
-
-class View:
-    x=0
-    y=0
-    z=0
+import sys
 
 class Point:
     def __init__(self, x, y, z):
@@ -25,17 +18,35 @@ class Point:
 
 class plan3d:
     ser=""
-    x=0
-    y=0
-    running=True
-    view = View()
-    viewMatrix = ""
+    view = Point(0,0,0)
+    point = Point(0,0,0)
+    time = time.time()
+    clearTime = 5
     hold_mouse = False
+    display = (1080, 1080)
+    move_x = 0
+    move_y = 0
+    move_z = 0
+    test = False
 
-    points = [Point(0.0, 0.0, 0.0)]
+    def usage(self):
+        print("usage : [-t =test_cube]")
 
     def __init__(self):
-        self.ser = serial.Serial('/dev/ttyUSB0',115200,timeout = 1)
+        if(len(sys.argv) > 2):
+            print("3dplan : wrong number of argument")
+            self.usage()
+            sys.exit()
+        for i in range(1, len(sys.argv)):
+            if(i == 1):
+                if(sys.argv[i] == "--test" or sys.argv[i] == "-t"):
+                    self.test = True
+                else:
+                    print("first arg error")
+                    self.usage()
+                    sys.exit()
+
+        self.ser = serial.Serial('/dev/tty.usbserial-1422240',115200,timeout = 1)
         self.ser.write(0x42)
         self.ser.write(0x57)
         self.ser.write(0x02)
@@ -46,101 +57,183 @@ class plan3d:
         self.ser.write(0x06)
 
         # window init
-        glutInitWindowSize(1080, 1080)
+        glutInitWindowSize(self.display[0], self.display[1])
         glutInitWindowPosition(0, 0)
         glutInitDisplayMode(GLUT_RGB)
         glutInit()
         glutCreateWindow("3d Plan")
+        glEnable(GL_DEPTH_TEST)
 
         # openGL calllback
         glutIdleFunc(self.process)
         glutDisplayFunc(self.plot_points)
         glutMotionFunc(self.mouseMotion)
         glutMouseFunc(self.mouseEvent)
-        
-        # openGl perspective
-        self.viewMatrix = IdentityMat44()
-        glMatrixMode(GL_MODELVIEW)
-        gluLookAt(0, 0, 0.5, 0, 0, 0, 0, 1, 0)
-        self.viewMatrix = glGetFloatv(GL_MODELVIEW_MATRIX)
+        glutKeyboardFunc(self.keyboardEvent)
+        # for some reason mouse wheel not implemented use 'z' 'x' keyboard
+        # glutMouseWheelFunc(self.mouseWhl)
+
         glLoadIdentity()
+
         glutMainLoop()
 
-    def redraw(self):
-        for point in self.points:
-            glColor3f(0.0,1.0,0.0)
-            glPointSize(2.0)
-            glBegin(GL_POINTS)
-            glVertex3d(point.x, point.y, point.z)
-            glEnd()
-            glFlush()
-
-    # draw utils
+    # clear screen
     def clearScreen(self):
         glClearColor(0.0, 0.0, 0.0, 1.0)
         gluOrtho2D(-1.0, 1.0,-1.0,1.0)
         glClear(GL_COLOR_BUFFER_BIT)
 
-    # point callback
+    # callbacks
     def plot_points(self):
         glColor3f(0.0,1.0,0.0)
         glPointSize(2.0)
         glBegin(GL_POINTS)
-        glVertex3d(0, self.x/1000, 0)
+        glVertex3d(0, self.point.x/1000, 0)
         glEnd()
         glFlush()
 
     def mouseMotion(self, x, y):
         if(self.hold_mouse == True):
-            print("x=", x)
-            print("y=", y)
-            self.view.x = self.view.x + x/1000
-            self.view.y = self.view.y + y/1000
-            
+            self.view.x = -1 * ((x - self.move_x)/10)
+            self.view.y = -1 * ((y - self.move_y)/10)
+            glRotatef(self.view.x, 1, 0, 0)
+            glRotatef(self.view.y, 0, 1, 0)
+            self.clearScreen()
+
     def mouseEvent(self, button, state, x, y):
         if(state == 0 and button == 0):
+            self.move_x = x
+            self.move_y = y
             self.hold_mouse = True
-        if(state == 1 and button == 0):
-            gluLookAt(0, self.view.x, 0.5, 0, 0, 0, 0, 1, 0)
-            glm.lookAt(glm.vec3(self.view.y,0,0), glm.vec3(self.view.x,0,0), glm.vec3(0,0,0))
-            glLoadIdentity()
-            # gluLookAt(0, 0, 0.5, self.view.x/1000, self.view.x/1000, 0, 0, 1, 0)
-            glRotatef(self.view.x, 0, 0, 1)
-            glRotatef(self.view.y, 0, 0, 1)
-            glPushMatrix()
-            glLoadIdentity()
-            glRotatef(self.view.x, 0, 0, 1)
-            glPopMatrix()
-            glMultMatrixf(self.viewMatrix)
-            viewMatrix = glGetFloatv(GL_MODELVIEW_MATRIX)
-            glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT)
-            self.redraw()
-            gluLookAt(0,0,0, 0,0,0, 0,0,0);
+        # if(state == 1 and button == 0):
+        #     glRotatef(self.view.x, 1, 0, 0)
+        #     glRotatef(self.view.y, 0, 1, 0)
+        #     glRotatef(self.view.z, 0, 0, 1)
+        #     self.clearScreen()
 
+    def mouseWhl(self, wheel, direction, x, y):
+        print(wheel)
+        print(direction)
+        print(x)
+        print(y)
 
-    # sensor callback
+    def keyboardEvent(self, key, x, y):
+        if(key == b'q'):
+             glutLeaveMainLoop()
+        if(key == b' '):
+            self.clearScreen()
+
+        # move x by keyboard
+        if(key == b'z'):
+            self.view.x = self.move_x + 10
+            glRotatef(self.view.x, 1, 0, 0)
+            self.clearScreen()
+        if(key == b'x'):
+            self.view.x = self.move_x - 10
+            glRotatef(self.view.x, 1, 0, 0)
+            self.clearScreen()
+        # move y by keyboard
+        if(key == b'c'):
+            self.view.y = self.move_y + 10
+            glRotatef(self.view.y, 0, 1, 0)
+            self.clearScreen()
+        if(key == b'v'):
+            self.view.y = self.move_y - 10
+            glRotatef(self.view.y, 0, 1, 0)
+            self.clearScreen()
+        # move z by keyboard
+        if(key == b'b'):
+            self.view.z = self.move_z + 10
+            glRotatef(self.view.z, 0, 0, 1)
+            self.clearScreen()
+        if(key == b'n'):
+            self.view.z = self.move_z - 10
+            glRotatef(self.view.z, 0, 0, 1)
+            self.clearScreen()
+
+    # get point
     def process(self):
+        # get point of tfmini-s sensor
         while(self.ser.in_waiting >= 9):
             if(('Y' == self.ser.read().decode("utf-8")) and ('Y' == self.ser.read().decode("utf-8"))):
                 Dist_L = self.ser.read()
                 Dist_H = self.ser.read()
                 Dist_Total = (ord(Dist_H) * 256) + (ord(Dist_L))
-                self.x = Dist_Total
-                self.points.append(Point(0,Dist_Total/1000,0))
+                self.point.x = Dist_Total
                 for i in range (0,5):
                    self.ser.read()
-               
-                # clear screen delete all dot already draw
-                # self.clearScreen()
-
                 glutPostRedisplay()
-
                 # print("dist L= ", ord(Dist_L), " dist H= ", ord(Dist_H), " dist total= ",Dist_Total)
             time.sleep(0.005)
 
+        if(self.test):
+            self.DrawCube()
+
+        # clear screen every self.clearTime "secondes
+        if(time.time() > (self.time+self.clearTime)):
+            self.time = time.time()
+            self.clearScreen()
+
+    def DrawCube(self):
+        # Cube
+        # White side - BACK
+        glBegin(GL_POLYGON)
+        glColor3f(   1.0,  1.0, 1.0 )
+        glVertex3f(  0.5, -0.5, 0.5 )
+        glVertex3f(  0.5,  0.5, 0.5 )
+        glVertex3f( -0.5,  0.5, 0.5 )
+        glVertex3f( -0.5, -0.5, 0.5 )
+        glEnd()
+
+        # Purple side - RIGHT
+        glBegin(GL_POLYGON)
+        glColor3f(  1.0,  0.0,  1.0 )
+        glVertex3f( 0.5, -0.5, -0.5 )
+        glVertex3f( 0.5,  0.5, -0.5 )
+        glVertex3f( 0.5,  0.5,  0.5 )
+        glVertex3f( 0.5, -0.5,  0.5 )
+        glEnd()
+
+        # Green side - LEFT
+        glBegin(GL_POLYGON)
+        glColor3f(   0.0,  1.0,  0.0 )
+        glVertex3f( -0.5, -0.5,  0.5 )
+        glVertex3f( -0.5,  0.5,  0.5 )
+        glVertex3f( -0.5,  0.5, -0.5 )
+        glVertex3f( -0.5, -0.5, -0.5 )
+        glEnd()
+
+        # Blue side - TOP
+        glBegin(GL_POLYGON)
+        glColor3f(   0.0,  0.0,  1.0 )
+        glVertex3f(  0.5,  0.5,  0.5 )
+        glVertex3f(  0.5,  0.5, -0.5 )
+        glVertex3f( -0.5,  0.5, -0.5 )
+        glVertex3f( -0.5,  0.5,  0.5 )
+        glEnd()
+
+        # Red side - BOTTOM
+        glBegin(GL_POLYGON)
+        glColor3f(   1.0,  0.0,  0.0 )
+        glVertex3f(  0.5, -0.5, -0.5 )
+        glVertex3f(  0.5, -0.5,  0.5 )
+        glVertex3f( -0.5, -0.5,  0.5 )
+        glVertex3f( -0.5, -0.5, -0.5 )
+        glEnd()
+
+        #TODO: Front side missing
+        # Yellow side - FRONT
+        # glBegin(GL_POLYGON)
+        # glColor3f(   1.0,  1.0,  0.0 )
+        # glVertex3f(  0.5, -0.5, 0.5 )
+        # glVertex3f(  0.5, -0.5,  0.5 )
+        # glVertex3f( -0.5, -0.5,  0.5 )
+        # glVertex3f( -0.5, -0.5, -0.5 )
+        # glEnd()
+
 def main():
     plan = plan3d()
-    glutMainLoop()
+    glutMainLoopEvent()
 
 if __name__ == '__main__':
     sys.exit(main())
