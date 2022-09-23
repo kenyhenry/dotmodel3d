@@ -30,21 +30,20 @@ class plan3d:
     test = False
 
     def usage(self):
-        print("usage : [-t =test_cube]")
+        print("usage : [-t = test_cube] [-c = clear periode in seconde]")
+        print("full usage : [--test] [--clear]")
 
     def __init__(self):
-        if(len(sys.argv) > 2):
+        if(len(sys.argv) > 4):
             print("3dplan : wrong number of argument")
             self.usage()
             sys.exit()
         for i in range(1, len(sys.argv)):
-            if(i == 1):
-                if(sys.argv[i] == "--test" or sys.argv[i] == "-t"):
-                    self.test = True
-                else:
-                    print("first arg error")
-                    self.usage()
-                    sys.exit()
+            if(sys.argv[i] == "--test" or sys.argv[i] == "-t"):
+                self.test = True
+            elif(sys.argv[i] == "--clear" or sys.argv[i] == "-c"):
+                i+=1
+                self.clearTime=float(sys.argv[i])
 
         self.ser = serial.Serial('/dev/tty.usbserial-1422240',115200,timeout = 1)
         self.ser.write(0x42)
